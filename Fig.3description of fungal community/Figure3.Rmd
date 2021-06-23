@@ -1,0 +1,203 @@
+---
+title: "Figure3"
+author: "Jianlou Yang"
+date: "2021/4/21"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Fig.3a
+```{r}
+#安装R包
+# if (!requireNamespace("BiocManager", quietly = TRUE))
+#   install.packages("BiocManager")
+# 
+# BiocManager::install("MicrobiotaProcess")
+
+#加载包
+library(MicrobiotaProcess)
+library(phyloseq)
+library(ggplot2)
+#读入数据
+ps_qiime2 <- import_qiime2(otuqza="LP_table.qza", taxaqza="LP_taxonomy_unite.qza", mapfilename="LP_mapping.txt")
+ps_qiime2
+
+#稀释曲线
+set.seed(1024)
+p_rare <- ggrarecurve(obj=ps_qiime2,
+                      indexNames=c("Observe","Chao1","ACE"),
+                      chunks=300) +
+  theme(legend.spacing.y=unit(0.02,"cm"),
+        legend.text=element_text(size=6))
+
+p_rare
+ggsave(paste("alpha_rare", ".pdf", sep=""), p_rare, width =10, height = 8)
+#alpha多样性
+set.seed(1024)
+alphaobj <- get_alphaindex(ps_qiime2)
+head(as.data.frame(alphaobj))
+# alphaobj <- alphaobj@alpha[,-6]
+# design <- read.table("Fig.2 alpha diversity/mapping.txt",header=T)
+# alphaobj$group <- design$group
+# as.factor(alphaobj$group)
+# write.csv(alphaobj,"Fig.2 alpha diversity/alpha.csv")
+# 然后再用ggbox来进行可视化
+alphaobj@alpha <- alphaobj@alpha[,-6]
+p1 <- ggbox(alphaobj, geom="violin", factorNames="group") +
+  scale_fill_manual(values=c("red", "blue"))+ # #2874C5,#EABF00
+  theme(strip.background = element_rect(colour=NA, fill="grey"))
+p1
+#ggsave(paste("alpha_diversity", ".pdf", sep=""), p_alpha, width =10, height = 8)
+```
+
+# Fig.3b
+```{r}
+library(vegan)
+library(ggplot2)
+# 读取距离矩阵文件
+dis = read.table("unweighted_unifrac.txt", header=T, row.names= 1, sep="\t", comment.char="") #可换其他距离矩阵
+
+# 读取实验设计
+design = read.table("LP_mapping.txt", header=T, row.names= 1, sep="\t", comment.char="") 
+adonis_result <- adonis(dis~group, design, permutations = 999)
+adonis_result
+# 提取样品组信息,默认为group可指定
+sampFile = as.data.frame(design[,"group"],row.names = row.names(design))
+colnames(sampFile)[1] = "group"
+
+
+
+# 统计与绘图
+
+# vegan:cmdscale计算矩阵矩阵中主坐标轴坐标，取前3维
+pcoa = cmdscale(dis, k=3, eig=T) # k is dimension, 3 is recommended; eig is eigenvalues
+points = as.data.frame(pcoa$points) # get coordinate string, format to dataframme
+eig = pcoa$eig
+points = cbind(points, sampFile[rownames(points),])
+colnames(points) = c("x", "y", "z","group") 
+
+# plot PCo 1 and 2
+p2 = ggplot(points, aes(x=x, y=y, color=group)) + geom_point(alpha=.7, size=2,aes(color=group)) +scale_color_manual(values = c('#F8766D', '#7CAE00'))+
+  labs(x=paste("PCoA 1 (", format(100 * eig[1] / sum(eig), digits=4), "%)", sep=""),
+       y=paste("PCoA 2 (", format(100 * eig[2] / sum(eig), digits=4), "%)", sep=""),
+       title=paste("Unweighted_unifrac"," PCoA"," R^2=0.056 P=0.004",sep=""))  + 
+  stat_ellipse(aes(fill = group), geom = 'polygon', level = 0.95, alpha = 0.6, show.legend = FALSE) +theme_light()
+p2
+# 保存pdf和png格式方便查看和编辑
+#ggsave(paste("Unweighted_unifrac", ".pdf", sep=""), p2, width = 5.5, height = 5.5)
+```
+
+# Fig.3c phylum
+```{r}
+
+library("reshape2")
+library("ggplot2")
+library("digest")
+library("ggrepel")
+library("ggpubr")
+library("ggalluvial")
+# 读取输入文件
+
+# 读取样品分类学文件
+tax_sample = read.table("sum_phylum.txt", header=T, row.names= 1, sep="\t", comment.char="") 
+#str(tax_sample)
+# 标准化，并筛选高丰度菌均值最小百万分之一0.0001%
+tax_sample = as.data.frame(t(t(tax_sample)/colSums(tax_sample,na=T))*100)
+#colSums(tax_sample)
+
+# 读取实验设计
+design = read.table("LP_mapping.txt", header=T, row.names= 1, sep="\t", comment.char="") 
+
+# 提取样品组信息,默认为genotype可指定
+sampFile = data.frame(group=design[,"group"],
+                      sample=row.names(design), 
+                      row.names = row.names(design))
+
+# 数据筛选，筛选两文件中共有
+idx = rownames(sampFile) %in% colnames(tax_sample) # match design with alpha
+sampFile = sampFile[idx,]
+tax_sample = tax_sample[,rownames(sampFile)] 
+
+
+
+# 按丰度降序排序
+mean_sort = tax_sample[(order(-rowSums(tax_sample))), ]
+mean_sort = as.data.frame(mean_sort)
+
+# 筛选前几类，自己定，其它归为other，可设置不同组数
+#number=
+#other = colSums(mean_sort[number:dim(mean_sort)[1], ])
+#mean_sort = mean_sort[1:(number - 1), ]
+#mean_sort = rbind(mean_sort,other)
+#rownames(mean_sort)[number] = c("Low abundance")
+# 再次检验计算是否出错
+#colSums(mean_sort)
+
+merge_tax=mean_sort
+
+
+
+################################# 按组均值绘制柱状图
+mat_t = t(merge_tax)
+mat_t2 = merge(sampFile, mat_t, by="row.names")
+mat_t2 = mat_t2[,c(-1,-3)]
+
+# 按组求均值，转置，再添加列名
+mat_mean = aggregate(mat_t2[,-1], by=mat_t2[1], FUN=mean) # mean
+mat_mean_final = do.call(rbind, mat_mean)[-1,]
+geno = mat_mean$group
+colnames(mat_mean_final) = geno
+
+# 保存变量备份，并输出至文件
+mean_sort=as.data.frame(mat_mean_final)
+
+# 数据转换长表格并绘图
+mean_sort$tax = rownames(mean_sort)
+data_all = as.data.frame(melt(mean_sort, id.vars=c("tax")))
+# 设置分类学顺序，默认字母，可选丰度或手动
+#data_all$tax  = factor(data_all$tax, levels=rownames(mean_sort))   
+data_all$value = as.numeric(data_all$value)
+library(RColorBrewer)
+
+m1 = brewer.pal(9,"Set1")
+m2 = brewer.pal(12,"Set3")
+Palette1 <- c("#B2182B","#E69F00","#56B4E9","#009E73","#F0E442","#0072B2","#D55E00","#CC79A7","#CC6666","#9999CC","#66CC99","#999999","#ADD1E5")
+Palette2 <- c('blue', 'orange', 'green', 'yellow', 'red', 'hotpink', 'cyan','purple', 'burlywood1','skyblue','grey','#8b8378','#458b74','#f0ffff','#eeb422','#ee6aa7','#8b3a62','#cd5c5c','#ee6363','#f0e68c','#e6e6fa','#add8e6','#bfefff','#f08080','#d1eeee','#7a8b8b','#8b814c','#8b5f65','gray')
+mix <- c(m1,Palette2,Palette1,m2)
+colour <- mix[4:15]
+#冲击图
+p3 <- ggplot(data = data_all,aes(x = variable, y = value, alluvium = tax, stratum = tax))+
+  geom_alluvium(aes(fill = tax),alpha = .5,width = 0.5)+ 
+  geom_stratum(aes(fill = tax),width = 0.5)+scale_fill_manual(values = rev(c(colour)))+
+  theme_classic()+scale_y_continuous(expand = c(0,0))+
+  labs(x = '', y = 'Relative Abundance(%)')+
+  #geom_flow(alpha = 0.5)+ #设置透明度
+  theme(panel.grid = element_blank(), panel.background = element_rect(color = 'black', fill = 'transparent'), strip.text = element_text(size = 12)) +
+  theme(axis.text = element_text(size = 12), axis.title = element_text(size = 13), legend.text = element_text(size = 11),legend.background = element_blank())
+p3
+#ggsave(paste("tax_sum_phylum", "_group.pdf", sep=""), p2, width = 12, height = 8)
+
+
+```
+
+# Fig.3d
+
+```{r}
+
+p4 <- png::readPNG('Fig.3d lefse.png',native = TRUE)
+
+```
+
+# 组图
+```{r}
+library(patchwork)
+p=p1+p2+p3+p4+plot_annotation(tag_levels = "a")+plot_layout(widths = c(2,2))
+p
+ggsave(paste("Figure", "3.pdf", sep=""), p, width = 12, height = 10)
+```
+
+
+

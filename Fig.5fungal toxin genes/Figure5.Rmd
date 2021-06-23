@@ -1,0 +1,195 @@
+---
+title: "Figure5"
+author: "Jianlou Yang"
+date: "2021/4/21"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Fig.5a
+```{r}
+library(reshape2)
+
+design = read.table("qPCR_mapping.txt", header=T, row.names= 1, sep="\t") 
+
+
+tax_count_sum = as.data.frame(t(read.table("ITS_qPCR_fungal.txt",header = T,row.names = 1)))
+
+
+mean_sort = tax_count_sum[(order(-rowSums(tax_count_sum))), ] # decrease sort
+colSums(mean_sort)
+mean_sort=as.data.frame(mean_sort)
+
+mat_t <- as.data.frame(t(mean_sort))
+
+# 按行追加组名
+design$group <- factor(design$group,levels=c("G1","G2"))
+mat_t$group <- design$group
+mat_t <- na.omit(mat_t)
+data_all <- melt(mat_t, id="group", variable.name="genes", value.name = "value")
+data_all1 <- data_all[-(which(data_all$value==0)),]
+
+library(ggplot2)
+library(ggpubr)
+
+mycomparision <- list(c('G1', 'G2'))
+
+p_1 <- ggplot(df_nooutlier, aes(x=group, y=log10(value),fill=group))+
+  geom_boxplot()+
+  stat_compare_means(method = 't.test', comparisons = mycomparision, label = 'p.signif') +
+  theme_light()+ylab("log10(value)(Copies/μL)")+facet_wrap(~genes)
+p_1
+
+```
+# Fig.4b
+```{r}
+dataplot <- read.csv("fungal_pcr.csv",header = T)
+dataplot1 <- melt(dataplot,value.name = "number",variable.name = "group")
+dataplot1 <- dataplot1[-20,]
+
+
+dataplot1$time <- factor(dataplot1$time,levels = c("D58","D90","D123","D156","D216","D316","D330"))
+dataplot1$group <- as.factor(dataplot1$group)
+
+p2 <- ggplot(data = dataplot1, aes(x = time, y = number,color = group, shape = group,group=group)) + 
+  geom_point(size = 3) + 
+  geom_line(size=1) + 
+  labs(x = "Time", y = "log(value+1)copies/m2")  
+p2
+
+```
+
+
+# Fig.4c
+```{r}
+library(reshape2)
+
+design = read.table("qPCR_mapping.txt", header=T, row.names= 1, sep="\t") 
+
+
+tax_count_sum = as.data.frame(t(read.table("ITS_qPCR_fungal.txt",header = T,row.names = 1)))
+
+
+mean_sort = tax_count_sum[(order(-rowSums(tax_count_sum))), ] # decrease sort
+colSums(mean_sort)
+mean_sort=as.data.frame(mean_sort)
+
+mat_t1 <- as.data.frame(t(mean_sort))
+design$time3 <- factor(design$time3,levels=c("D58","D90","D123","D156","D216","D316","D330"))
+mat_t1$time3 <- design$time3
+mat_t1 <- na.omit(mat_t1)
+mat_mean = aggregate(mat_t1[,-6], by=mat_t1[6], FUN=mean) # mean
+mat_mean_final = do.call(rbind, mat_mean)[-1,]
+# 恢复行名
+
+geno = mat_mean$time3
+colnames(mat_mean_final) = geno
+# 转换为数据框
+mat_mean_final = as.data.frame(mat_mean_final)
+# 添加物种列
+mat_mean_final$genes = rownames(mat_mean_final)
+library(ggpubr)
+# 表格转换
+data_all = as.data.frame(melt(mat_mean_final, id.vars=c("genes")))
+library(RColorBrewer)
+
+
+
+mycomparision <- list(c("D58","D90","D123","D156","D216","D316","D330"))
+
+compare_means(value ~variable, data=data_all, method = "kruskal.test")
+colnames(data_all)[2] <- "Group"
+p3 <- ggplot(data_all, aes(x=Group, y=log10(value+1),fill=Group))+  
+  geom_boxplot()+ scale_fill_brewer(palette="Set1")+
+  geom_point() +stat_compare_means()+
+  #stat_compare_means(method = 'kruskal.test', comparisons = mycomparision, label = 'p.signif')+ 
+  theme_light()+ylab("log10(value + 1)(Copies/μL)")#+facet_wrap(~genes)
+p3
+```
+
+# Fig.5d 物种与基因相关网络图
+```{r}
+##计算微生物类群丰度和功能基因丰度的相关系数
+
+library(Hmisc)
+ 
+#以属水平丰度为例，“phylum_table.txt” 是一个门水平的微生物丰度表
+phylum <- read.delim('genus_table.txt', row.name = 1, check.names = FALSE)
+norm = t(t(phylum )/colSums(phylum ,na=T))*100
+colSums(norm)
+#norm <- norm[which(rowSums(norm) >= 0.1), ]    #例如只保留相对丰度总和高于 0.005 的属
+
+phylum <- as.data.frame(t(norm))
+
+
+
+#“ARGs_table.txt”是一个抗生素抗性基因丰度表
+genes <- read.delim('ITS_qPCR_fungal.txt', row.name = 1, check.names = FALSE)
+
+#计算群落组成与功能的相关性，以 spearman 相关系数为例
+phylum_genes_corr <- rcorr(as.matrix(phylum), as.matrix(genes), type = 'spearman')
+ 
+#相关系数 r 值和显著性 p 值矩阵
+r <- phylum_genes_corr$r
+p <- phylum_genes_corr$P
+ 
+#只保留微生物丰度-功能基因丰度的相关系数
+#去除微生物-微生物、功能基因-功能基因之间的相关系数
+r <- r[colnames(phylum),colnames(genes)]
+p <- p[colnames(phylum),colnames(genes)]
+r <- na.omit(r)
+p <- na.omit(p)
+
+write.csv(r,"r.csv")
+
+r[abs(r) < 0.3] <- 0
+ 
+#选取显著性 p 值小于 0.05 的相关系数，即 p<0.05
+p <- p.adjust(p, method = 'BH')    #可选 p 值校正，这里使用 BH 法校正 p 值
+p[p>=0.05] <- -1
+p[p<0.05 & p>=0] <- 1
+p[p==-1] <- 0
+ 
+#根据上述筛选的 r 值和 p 值保留数据
+z <- r * p
+
+
+z1 <- phylum_genes_corr$r
+z1[z1 != 0 ] <- 0
+
+z1[rownames(z),colnames(z)] <- z
+z1[colnames(z),rownames(z)] <- z
+z1[is.na(z1)] <- 0 
+#write.table(data.frame(z1, check.names = FALSE), 'phylum_genes_corr.matrix.txt', col.names = NA, sep = '\t', quote = FALSE)
+ 
+##获得网络
+library(igraph)
+ 
+#将邻接矩阵转化为 igraph 网络的邻接列表
+#构建含权的无向网络，权重代表了微生物丰度和功能基因丰度间的 spearman 相关系数
+g <- graph.adjacency(z1, weighted = TRUE, mode = 'undirected')
+g
+ 
+#孤立节点的删除（删除度为 0 的节点）
+g <- delete.vertices(g, names(degree(g)[degree(g) == 0]))
+ 
+#该模式下，边权重代表了相关系数
+#由于权重通常为正值，因此最好取个绝对值，相关系数重新复制一列
+E(g)$correlation <- E(g)$weight
+E(g)$weight <- abs(E(g)$weight)
+ 
+#查看网络图
+plot(g)
+
+
+#例如 gml 格式，可使用 cytoscape或gephi 软件打开并进行可视化编辑
+write.graph(g, 'network.gml', format = 'gml')
+write.graph(g, 'network.graphml', format = 'graphml')
+```
+
+
+
+
