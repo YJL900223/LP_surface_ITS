@@ -25,7 +25,7 @@ mean_sort=as.data.frame(mean_sort)
 
 mat_t <- as.data.frame(t(mean_sort))
 
-# 按行追加组名
+
 design$group <- factor(design$group,levels=c("G1","G2"))
 mat_t$group <- design$group
 mat_t <- na.omit(mat_t)
@@ -83,16 +83,15 @@ mat_t1$time3 <- design$time3
 mat_t1 <- na.omit(mat_t1)
 mat_mean = aggregate(mat_t1[,-6], by=mat_t1[6], FUN=mean) # mean
 mat_mean_final = do.call(rbind, mat_mean)[-1,]
-# 恢复行名
 
 geno = mat_mean$time3
 colnames(mat_mean_final) = geno
-# 转换为数据框
+# Convert to data frame
 mat_mean_final = as.data.frame(mat_mean_final)
-# 添加物种列
+# Add species column
 mat_mean_final$genes = rownames(mat_mean_final)
 library(ggpubr)
-# 表格转换
+
 data_all = as.data.frame(melt(mat_mean_final, id.vars=c("genes")))
 library(RColorBrewer)
 
@@ -110,34 +109,34 @@ p3 <- ggplot(data_all, aes(x=Group, y=log10(value+1),fill=Group))+
 p3
 ```
 
-# Fig.5d 物种与基因相关网络图
+# Fig.5d Species and gene related network
 ```{r}
-##计算微生物类群丰度和功能基因丰度的相关系数
+##The correlation coefficients between the abundance of microbial groups and the abundance of functional genes were calculated
 
 library(Hmisc)
  
-#以属水平丰度为例，“phylum_table.txt” 是一个门水平的微生物丰度表
+#Taking the genus level abundance as an example
 phylum <- read.delim('genus_table.txt', row.name = 1, check.names = FALSE)
 norm = t(t(phylum )/colSums(phylum ,na=T))*100
 colSums(norm)
-#norm <- norm[which(rowSums(norm) >= 0.1), ]    #例如只保留相对丰度总和高于 0.005 的属
+
 
 phylum <- as.data.frame(t(norm))
 
 
 
-#“ARGs_table.txt”是一个抗生素抗性基因丰度表
+#Reading toxin gene table
 genes <- read.delim('ITS_qPCR_fungal.txt', row.name = 1, check.names = FALSE)
 
-#计算群落组成与功能的相关性，以 spearman 相关系数为例
+#The correlation between community composition and function was calculated, and Spearman correlation coefficient was taken as an example
 phylum_genes_corr <- rcorr(as.matrix(phylum), as.matrix(genes), type = 'spearman')
  
-#相关系数 r 值和显著性 p 值矩阵
+#Correlation coefficient r value and significance p value matrix
 r <- phylum_genes_corr$r
 p <- phylum_genes_corr$P
  
-#只保留微生物丰度-功能基因丰度的相关系数
-#去除微生物-微生物、功能基因-功能基因之间的相关系数
+
+#Remove the correlation coefficient between microbe microbe and functional gene functional gene
 r <- r[colnames(phylum),colnames(genes)]
 p <- p[colnames(phylum),colnames(genes)]
 r <- na.omit(r)
@@ -147,13 +146,12 @@ write.csv(r,"r.csv")
 
 r[abs(r) < 0.3] <- 0
  
-#选取显著性 p 值小于 0.05 的相关系数，即 p<0.05
-p <- p.adjust(p, method = 'BH')    #可选 p 值校正，这里使用 BH 法校正 p 值
+#The correlation coefficient with P value less than 0.05 was selected, that is, P < 0.05
+p <- p.adjust(p, method = 'BH')
 p[p>=0.05] <- -1
 p[p<0.05 & p>=0] <- 1
 p[p==-1] <- 0
  
-#根据上述筛选的 r 值和 p 值保留数据
 z <- r * p
 
 
@@ -165,27 +163,21 @@ z1[colnames(z),rownames(z)] <- z
 z1[is.na(z1)] <- 0 
 #write.table(data.frame(z1, check.names = FALSE), 'phylum_genes_corr.matrix.txt', col.names = NA, sep = '\t', quote = FALSE)
  
-##获得网络
+##network
 library(igraph)
  
-#将邻接矩阵转化为 igraph 网络的邻接列表
-#构建含权的无向网络，权重代表了微生物丰度和功能基因丰度间的 spearman 相关系数
 g <- graph.adjacency(z1, weighted = TRUE, mode = 'undirected')
 g
- 
-#孤立节点的删除（删除度为 0 的节点）
+
 g <- delete.vertices(g, names(degree(g)[degree(g) == 0]))
  
-#该模式下，边权重代表了相关系数
-#由于权重通常为正值，因此最好取个绝对值，相关系数重新复制一列
 E(g)$correlation <- E(g)$weight
 E(g)$weight <- abs(E(g)$weight)
  
-#查看网络图
 plot(g)
 
 
-#例如 gml 格式，可使用 cytoscape或gephi 软件打开并进行可视化编辑
+#For example, GML format can be opened and edited visually by using Cytoscape or gephi software
 write.graph(g, 'network.gml', format = 'gml')
 write.graph(g, 'network.graphml', format = 'graphml')
 ```

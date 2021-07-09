@@ -6,9 +6,8 @@ library(reshape)
 library(ggsci)
 pro_data <- read.csv("pro_data.csv",header = T)
 data <- melt(pro_data,id.vars='names')
-# 过滤比例小于 1% 的来源
+# Sources with filtration ratio less than 1%
 data <- data[data$value>0.01,]
-# 保留一位小数
 data$value <- round(data$value*100, digits = 1)
 library(plyr)
 library(RColorBrewer)
@@ -28,9 +27,9 @@ data_all$time3  = factor(data_all$time3, levels=c("D58","D90","D123","D156","D21
 p2 = ggplot(data_all, aes(x=time3, y = value, fill = names )) + 
   geom_bar(stat = "identity",position="fill", width=1)+ 
   scale_y_continuous(labels = scales::percent) + scale_fill_npg()+
-  # 分面，进一步按group分组，x轴范围自由否则位置异常，swith设置标签底部，并调置去除图例背景
+  
   facet_grid( ~ site2, scales = "free_x", switch = "x") +  theme(strip.background = element_blank())+
-  # 关闭x轴刻度和标签
+  
   theme(axis.ticks.x = element_blank(), axis.text.x = element_blank())+
   xlab("Site")+ylab("Percentage (%)")+ theme_classic()+theme(axis.text.x=element_text(angle=45,vjust=1, hjust=1))
 p2

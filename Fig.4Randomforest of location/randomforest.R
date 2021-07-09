@@ -1,59 +1,52 @@
-# 随机森林回归 Random Forest Regression
+#  Random Forest Regression
 
-## 回归分析
+## regression analysis
 
-# 读取实验设计、和物种分类文件
+# Read the experimental design and species classification files
 tc_map =read.table("design.txt",header = T, row.names = 1)
-# 物种分类文件，由qiime summarize_taxa.py生成，详见扩增子分析流程系列
+
 otu_table =read.table("sum_g.txt",header = T, row.names = 1)
-# 筛选品种作为训练集
+# Screening training sets
 sub_map = tc_map[tc_map$group %in% c("G1"),] # ,"IR24"
-# 筛选OTU
+# Screening OTUs
 idx = rownames(sub_map) %in% colnames(otu_table)
 sub_map = sub_map[idx,]
 sub_otu = otu_table[, rownames(sub_map)]   
 
-## 随机森林回归
+## Random forest regression
 library(randomForest)
 set.seed(315)
 #sub_map$site2 <- as.factor(sub_map$site2)
 rf = randomForest(t(sub_otu), sub_map$site2, importance=TRUE, proximity=TRUE, ntree = 1000)
 print(rf)
 
-## 交叉验证选择Features
-set.seed(315) # 随机数据保证结果可重复，必须
-# rfcv是随机森林交叉验证函数：Random Forest Cross Validation
+## Cross validation select features
+set.seed(315) # Random data ensures repeatable results
+# Random Forest Cross Validation
 result = rfcv(t(sub_otu), sub_map$site2, cv.fold=10)
-# 查看错误率表，23时错误率最低，为最佳模型
+# Looking at the error rate table, 23 is the best model with the lowest error rate
 result$error.cv
-# 绘制验证结果 
+# Draw validation results
 with(result, plot(n.var, error.cv, log="x", type="o", lwd=2))
 
-##########################导出图片
-
-# 导出feature重要性
+# Export feature importance
 imp= as.data.frame(rf$importance)
 imp = imp[order(imp[,1],decreasing = T),]
 head(imp)
 write.table(imp,file = "importance_class.txt",quote = F,sep = '\t', row.names = T, col.names = T)
-# 简单可视化
+# Simple visualization
 varImpPlot(rf, main = "Top 23 - Feature OTU importance",n.var = 25, bg = par("bg"),
            color = par("fg"), gcolor = par("fg"), lcolor = "gray" )
 
 
-## ggplot2美华feature贡献度柱状图
-
-# 软件内部的varImpPlot可以快速可视化贡献度，简单全面，但发表还是要美美哒，美是需要代码的，就是花时间
-# 基本思路同绘制Top 23 feature柱状图，按门着色，简化纲水平名字
-
-# 读取所有feature贡献度
+# Read all feature contributions
 imp = read.table("importance_class.txt", header=T, row.names= 1, sep="\t") 
-# 分析选择top23分组效果最好
+# Top 23 was the best choice
 imp = head(imp, n=23)
-# 反向排序X轴，让柱状图从上往下画
+# Sort the x-axis in reverse so that the histogram is drawn from top to bottom
 imp=imp[order(1:23,decreasing = T),]
 
-# 绘制物种类型种重要性柱状图
+# Draw a histogram of species type and importance
 library(ggplot2)
 main_theme = theme(panel.background=element_blank(),
                    panel.grid=element_blank(),
@@ -75,25 +68,20 @@ p
 ggsave(paste("rf_imp_feature",".pdf", sep=""), p, width = 6, height =4)
 
 
-
-# 绘制时间序列热图
-
-# 加载热图绘制包
+# Load heat map drawing package
 library(pheatmap)
 
-# 数据筛选23个feature展示
+# Data filtering and 23 features display
 sub_abu = sub_otu[rownames(imp1),]
 
-# 简化名字
 rownames(sub_abu)=imp1[rownames(sub_abu),"genus"]
 
-# 直接自动聚类出图
 pheatmap(sub_abu, scale = "row")
-# 保存结果
+# save results
 pheatmap(sub_abu, scale = "row", filename = "heatmap_samples.pdf", width = 5, height = 5)
 
 
-# 按时间为组合并均值
+# Combined and averaged by time
 sampFile = as.data.frame(sub_map$site2,row.names = row.names(sub_map))
 colnames(sampFile)[1] = "group"
 mat_t = t(sub_abu)
@@ -107,10 +95,10 @@ pheatmap(otu_norm_group, scale="row",cluster_cols = F, cluster_rows = T, filenam
 
 
 
-## 求每组最大值
+## Find the maximum value of each group
 bak=otu_norm_group
 
-otu_norm_group = otu_norm_group[as.character(imp1$genus),] # 按初始排序
+otu_norm_group = otu_norm_group[as.character(imp1$genus),] 
 
 for (i in 1:length(rownames(otu_norm_group))) {
 #  i=1
@@ -123,9 +111,8 @@ taxonomy = arrange(imp1, desc(order2), genus)
 
 otu_norm_group1 = otu_norm_group[match(taxonomy$genus,rownames(otu_norm_group)),] # 按初始排序
 
-# 按初始排序
 pheatmap(otu_norm_group1,scale="row",cluster_cols = F, cluster_rows = F)
-
+#0,1,2 correspond to CC, PC, SC respectively
 pheatmap(otu_norm_group1,scale="row",cluster_cols = F, cluster_rows = F,filename ="pheatmap_order_all.pdf",width=8, height=4)
-###########0,1,2分别对应CC,PC,SC
+
 
